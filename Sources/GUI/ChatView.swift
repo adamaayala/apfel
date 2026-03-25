@@ -3,94 +3,133 @@
 // ============================================================================
 
 import SwiftUI
+import AppKit
+
+enum FocusField {
+    case messageInput
+    case systemPrompt
+}
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
+    @FocusState private var focusedField: FocusField?
 
     var body: some View {
         VStack(spacing: 0) {
-            // System prompt (collapsible)
-            systemPromptBar
+            // System prompt — always visible, compact
+            HStack(spacing: 8) {
+                Text("System:")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                TextField("Optional system prompt", text: $viewModel.systemPrompt)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .focused($focusedField, equals: .systemPrompt)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
 
             Divider()
 
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(viewModel.messages) { msg in
-                            MessageBubble(
-                                message: msg,
-                                isSelected: viewModel.selectedMessageId == msg.id,
-                                onSelect: { viewModel.selectedMessageId = msg.id }
-                            )
-                            .id(msg.id)
+                    if viewModel.messages.isEmpty {
+                        emptyState
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(viewModel.messages) { msg in
+                                MessageBubble(
+                                    message: msg,
+                                    isSelected: viewModel.selectedMessageId == msg.id,
+                                    onSelect: {
+                                        viewModel.selectedMessageId = msg.id
+                                        viewModel.showDebugPanel = true
+                                    }
+                                )
+                                .id(msg.id)
+                            }
                         }
+                        .padding(.vertical, 8)
                     }
-                    .padding(.vertical, 12)
                 }
                 .onChange(of: viewModel.messages.count) { _, _ in
-                    if let lastId = viewModel.messages.last?.id {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(lastId, anchor: .bottom)
-                        }
-                    }
+                    scrollToBottom(proxy)
                 }
                 .onChange(of: viewModel.messages.last?.content) { _, _ in
-                    if let lastId = viewModel.messages.last?.id {
-                        proxy.scrollTo(lastId, anchor: .bottom)
-                    }
+                    scrollToBottom(proxy)
                 }
             }
 
             Divider()
 
             // Input bar
-            inputBar
-        }
-    }
-
-    // MARK: - System Prompt Bar
-
-    private var systemPromptBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "gear")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            TextField("System prompt (optional)", text: $viewModel.systemPrompt)
-                .textFieldStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    // MARK: - Input Bar
-
-    private var inputBar: some View {
-        HStack(spacing: 8) {
-            TextField("Message...", text: $viewModel.currentInput, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .onSubmit {
-                    if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+            HStack(alignment: .center, spacing: 10) {
+                TextField("Type a message, press Enter to send...", text: $viewModel.currentInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body)
+                    .focused($focusedField, equals: .messageInput)
+                    .onSubmit {
                         Task { await viewModel.send() }
+                        // Re-focus after send
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedField = .messageInput
+                        }
                     }
-                }
 
-            Button(action: { Task { await viewModel.send() } }) {
-                Image(systemName: viewModel.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(viewModel.currentInput.isEmpty && !viewModel.isStreaming ? .gray : .blue)
+                Button(action: {
+                    Task { await viewModel.send() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        focusedField = .messageInput
+                    }
+                }) {
+                    Image(systemName: viewModel.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(canSend ? .accentColor : Color(nsColor: .tertiaryLabelColor))
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canSend)
             }
-            .buttonStyle(.borderless)
-            .disabled(viewModel.currentInput.trimmingCharacters(in: .whitespaces).isEmpty && !viewModel.isStreaming)
-            .keyboardShortcut(.return, modifiers: .command)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            // Focus the message input on launch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focusedField = .messageInput
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "apple.logo")
+                .font(.system(size: 36))
+                .foregroundStyle(.quaternary)
+            Text("Apple Intelligence")
+                .font(.title3)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+            Text("Press Enter to send")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var canSend: Bool {
+        !viewModel.currentInput.trimmingCharacters(in: .whitespaces).isEmpty || viewModel.isStreaming
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        if let lastId = viewModel.messages.last?.id {
+            withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
+        }
     }
 }

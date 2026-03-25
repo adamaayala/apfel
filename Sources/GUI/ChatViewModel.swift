@@ -14,6 +14,7 @@ struct ChatMsg: Identifiable {
     let timestamp: Date
     var requestJSON: String?
     var responseJSON: String?
+    var curlCommand: String?
     var durationMs: Int?
     var tokenCount: Int?
     var isStreaming: Bool = false
@@ -29,6 +30,8 @@ class ChatViewModel {
     var isStreaming: Bool = false
     var selectedMessageId: String?
     var errorMessage: String?
+    var showDebugPanel: Bool = true
+    var showLogPanel: Bool = true
 
     let apiClient: APIClient
 
@@ -47,43 +50,49 @@ class ChatViewModel {
         let input = currentInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty, !isStreaming else { return }
 
-        // Add user message
+        // Build message history (before adding this message)
+        var history = messages.filter { $0.role == "user" || $0.role == "assistant" }
+            .map { (role: $0.role, content: $0.content) }
+        history.append((role: "user", content: input))
+
+        // Get request JSON early so user message can show it too
+        let (stream, requestJSON) = apiClient.streamChatCompletion(
+            messages: history,
+            systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt
+        )
+
+        // Build curl command for debug
+        let port = 11434
+        let curlCmd = "curl -X POST http://127.0.0.1:\(port)/v1/chat/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '\(requestJSON.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "  ", with: ""))'"
+
+        // Add user message (with request JSON attached)
+        let userId = UUID().uuidString
         let userMsg = ChatMsg(
-            id: UUID().uuidString,
+            id: userId,
             role: "user",
             content: input,
-            timestamp: Date()
+            timestamp: Date(),
+            requestJSON: requestJSON,
+            curlCommand: curlCmd
         )
         messages.append(userMsg)
         currentInput = ""
         isStreaming = true
         errorMessage = nil
 
-        // Build message history for context
-        let history = messages.filter { $0.role == "user" || $0.role == "assistant" }
-            .map { (role: $0.role, content: $0.content) }
-
         // Create assistant message placeholder
         let assistantId = UUID().uuidString
-        var assistantMsg = ChatMsg(
+        messages.append(ChatMsg(
             id: assistantId,
             role: "assistant",
             content: "",
             timestamp: Date(),
+            requestJSON: requestJSON,
+            curlCommand: curlCmd,
             isStreaming: true
-        )
-        messages.append(assistantMsg)
+        ))
 
         let start = Date()
-
-        // Stream the response
-        let (stream, requestJSON) = apiClient.streamChatCompletion(
-            messages: history,
-            systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt
-        )
-
-        assistantMsg.requestJSON = requestJSON
-        updateMessage(id: assistantId) { $0.requestJSON = requestJSON }
 
         do {
             for try await delta in stream {

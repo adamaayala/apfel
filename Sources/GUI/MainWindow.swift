@@ -8,9 +8,6 @@ struct MainWindow: View {
     @Bindable var viewModel: ChatViewModel
     let apiClient: APIClient
 
-    @State private var showDebug = true
-    @State private var showLogs = true
-
     var body: some View {
         VStack(spacing: 0) {
             // Main content: Chat + Debug sidebar
@@ -18,22 +15,24 @@ struct MainWindow: View {
                 ChatView(viewModel: viewModel)
                     .frame(minWidth: 350)
 
-                if showDebug {
-                    DebugPanel(viewModel: viewModel)
-                        .frame(minWidth: 280, idealWidth: 380, maxWidth: 500)
-                }
+                DebugPanel(viewModel: viewModel)
+                    .frame(minWidth: 280, idealWidth: 380, maxWidth: 500)
+                    .opacity(viewModel.showDebugPanel ? 1 : 0)
+                    .frame(width: viewModel.showDebugPanel ? nil : 0)
+                    .clipped()
             }
 
-            // Bottom: Log viewer
-            if showLogs {
-                Divider()
-                LogViewer(apiClient: apiClient)
-                    .frame(minHeight: 100, idealHeight: 180, maxHeight: 300)
-            }
+            // Bottom: Log viewer (always rendered, visibility toggled)
+            Divider()
+                .opacity(viewModel.showLogPanel ? 1 : 0)
+            LogViewer(apiClient: apiClient)
+                .frame(height: viewModel.showLogPanel ? 180 : 0)
+                .clipped()
+                .opacity(viewModel.showLogPanel ? 1 : 0)
         }
         .toolbar {
             ToolbarItemGroup {
-                Button(action: { Task { await viewModel.clear() } }) {
+                Button(action: { viewModel.clear() }) {
                     Label("Clear", systemImage: "trash")
                 }
                 .keyboardShortcut("k", modifiers: .command)
@@ -41,13 +40,13 @@ struct MainWindow: View {
 
                 Divider()
 
-                Toggle(isOn: $showDebug) {
+                Toggle(isOn: $viewModel.showDebugPanel) {
                     Label("Debug", systemImage: "ant.circle")
                 }
                 .keyboardShortcut("d", modifiers: .command)
                 .help("Toggle debug panel (Cmd+D)")
 
-                Toggle(isOn: $showLogs) {
+                Toggle(isOn: $viewModel.showLogPanel) {
                     Label("Logs", systemImage: "list.bullet.rectangle")
                 }
                 .keyboardShortcut("l", modifiers: .command)

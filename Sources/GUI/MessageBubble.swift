@@ -1,5 +1,5 @@
 // ============================================================================
-// MessageBubble.swift — Chat message bubble with copy button
+// MessageBubble.swift — Chat message bubble with always-visible action buttons
 // ============================================================================
 
 import SwiftUI
@@ -10,66 +10,90 @@ struct MessageBubble: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if message.role == "user" { Spacer(minLength: 60) }
+        VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 4) {
+            // Role + timing header
+            HStack(spacing: 6) {
+                if message.role == "user" { Spacer() }
 
-            VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 4) {
-                // Role label
-                HStack(spacing: 4) {
-                    Text(message.role == "user" ? "you" : "ai")
+                Text(message.role == "user" ? "You" : "Apple Intelligence")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                if let ms = message.durationMs {
+                    Text("· \(ms)ms")
                         .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-
-                    if let ms = message.durationMs {
-                        Text("· \(ms)ms")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    if message.isStreaming {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
+                        .foregroundStyle(.tertiary)
                 }
 
-                // Message content
-                Text(message.content.isEmpty && message.isStreaming ? "..." : message.content)
+                if let tokens = message.tokenCount {
+                    Text("· ~\(tokens) tokens")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                if message.isStreaming {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+
+                if message.role == "assistant" { Spacer() }
+            }
+            .padding(.horizontal, 20)
+
+            // Bubble
+            HStack(alignment: .top, spacing: 0) {
+                if message.role == "user" { Spacer(minLength: 100) }
+
+                Text(message.content.isEmpty && message.isStreaming ? "Thinking..." : message.content)
                     .font(.body)
                     .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        message.role == "user"
-                            ? Color.accentColor.opacity(0.15)
-                            : Color(nsColor: .controlBackgroundColor)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(message.content.isEmpty && message.isStreaming ? .tertiary : .primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(bubbleColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 14)
                             .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
                     )
 
-                // Copy button (visible on hover)
-                if isHovered && !message.content.isEmpty {
-                    Button(action: copyToClipboard) {
-                        Label("Copy", systemImage: "doc.on.doc")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                }
+                if message.role == "assistant" { Spacer(minLength: 100) }
             }
+            .padding(.horizontal, 16)
 
-            if message.role == "assistant" { Spacer(minLength: 60) }
+            // Action buttons — ALWAYS visible, full size
+            HStack(spacing: 12) {
+                if message.role == "user" { Spacer() }
+
+                Button(action: onSelect) {
+                    Label("Inspect", systemImage: "ant.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundColor(isSelected ? .accentColor : .secondary)
+
+                Button(action: copyToClipboard) {
+                    Label("Copy", systemImage: "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+
+                if message.role == "assistant" { Spacer() }
+            }
+            .padding(.horizontal, 20)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
-        .onHover { isHovered = $0 }
+        .padding(.vertical, 8)
+    }
+
+    private var bubbleColor: Color {
+        if message.role == "user" {
+            return Color.accentColor.opacity(0.12)
+        } else {
+            return Color(nsColor: .controlBackgroundColor)
+        }
     }
 
     private func copyToClipboard() {

@@ -14,59 +14,106 @@ struct DebugPanel: View {
             HStack {
                 Image(systemName: "ant.circle.fill")
                     .foregroundStyle(.orange)
-                Text("Debug")
+                Text("Debug Inspector")
                     .font(.headline)
                 Spacer()
+                if viewModel.selectedMessage != nil {
+                    Button("Clear") {
+                        viewModel.selectedMessageId = nil
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
             .background(Color(nsColor: .controlBackgroundColor))
 
             Divider()
 
             if let msg = viewModel.selectedMessage {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // Timing
-                        if let ms = msg.durationMs {
-                            debugSection(title: "Timing", icon: "clock") {
-                                LabeledContent("Duration", value: "\(ms)ms")
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Message info
+                        infoCard {
+                            HStack {
+                                Label(msg.role == "user" ? "User Message" : "AI Response",
+                                      systemImage: msg.role == "user" ? "person.circle" : "cpu")
+                                Spacer()
+                                if let ms = msg.durationMs {
+                                    Text("\(ms)ms")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green.opacity(0.1))
+                                        .clipShape(Capsule())
+                                }
                                 if let tokens = msg.tokenCount {
-                                    LabeledContent("Est. tokens", value: "~\(tokens)")
+                                    Text("~\(tokens) tokens")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.blue.opacity(0.1))
+                                        .clipShape(Capsule())
                                 }
                             }
+                            .font(.caption)
                         }
 
-                        // Request
-                        if let json = msg.requestJSON {
-                            debugSection(title: "Request", icon: "arrow.up.doc") {
-                                codeBlock(json)
-                                copyButton(text: json, label: "Copy request")
-                            }
-                        }
-
-                        // Response
-                        if let json = msg.responseJSON {
-                            debugSection(title: "Response", icon: "arrow.down.doc") {
-                                codeBlock(json)
-                                copyButton(text: json, label: "Copy response")
-                            }
+                        // curl command
+                        if let curl = msg.curlCommand {
+                            codeSection(
+                                title: "curl Command (copy & paste to reproduce)",
+                                icon: "terminal",
+                                text: curl,
+                                color: .purple
+                            )
                         }
 
                         // Content
-                        debugSection(title: "Content", icon: "text.quote") {
-                            codeBlock(msg.content)
-                            copyButton(text: msg.content, label: "Copy content")
+                        codeSection(
+                            title: "Content",
+                            icon: "text.quote",
+                            text: msg.content,
+                            color: .primary
+                        )
+
+                        // Request JSON
+                        if let json = msg.requestJSON {
+                            codeSection(
+                                title: "HTTP Request Body",
+                                icon: "arrow.up.doc.fill",
+                                text: json,
+                                color: .orange
+                            )
+                        }
+
+                        // Response JSON
+                        if let json = msg.responseJSON {
+                            codeSection(
+                                title: "HTTP Response Body",
+                                icon: "arrow.down.doc.fill",
+                                text: json,
+                                color: .green
+                            )
                         }
                     }
                     .padding(12)
                 }
             } else {
-                VStack {
+                // Empty state
+                VStack(spacing: 8) {
                     Spacer()
-                    Text("Click a message to inspect")
+                    Image(systemName: "ant.circle")
+                        .font(.system(size: 32))
                         .foregroundStyle(.tertiary)
+                    Text("Click a message to inspect")
                         .font(.callout)
+                        .foregroundStyle(.tertiary)
+                    Text("See the full HTTP request/response")
+                        .font(.caption)
+                        .foregroundStyle(.quaternary)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -78,44 +125,44 @@ struct DebugPanel: View {
     // MARK: - Components
 
     @ViewBuilder
-    private func debugSection<Content: View>(
-        title: String,
-        icon: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
+    private func infoCard(@ViewBuilder content: () -> some View) -> some View {
+        content()
+            .padding(10)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func codeSection(title: String, icon: String, text: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
+            HStack {
                 Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(color)
                 Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                    .fontWeight(.medium)
+                Spacer()
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }) {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
             }
-            content()
-        }
-    }
+            .font(.caption)
 
-    private func codeBlock(_ text: String) -> some View {
-        Text(text)
-            .font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled)
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private func copyButton(text: String, label: String) -> some View {
-        Button(action: {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-        }) {
-            Label(label, systemImage: "doc.on.doc")
-                .font(.caption2)
+            Text(text)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(color.opacity(0.15), lineWidth: 1)
+                )
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
     }
 }
