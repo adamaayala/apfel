@@ -13,7 +13,11 @@ No API keys. No cloud. No model downloads. Runs entirely on your Mac.
 
 Every Mac with Apple Silicon has a **built-in LLM** — Apple's on-device foundation model, shipped as part of Apple Intelligence and accessed via the `FoundationModels` framework (macOS 26+). It runs **entirely on the Neural Engine**, no internet required. Apple only exposes it through Siri and system features. **apfel wraps it** in a CLI, an HTTP server, and a debug GUI — so you can actually use it.
 
-**It's a UNIX tool** — `echo "summarize this" | apfel`, pipe-friendly with JSON output, exit codes, and env vars. **It's an OpenAI-compatible API server** — start `apfel --serve` and point any OpenAI SDK client at `localhost:11434`, zero code changes. **It's a native debug GUI** — inspect every request, response, and streaming event in a SwiftUI inspector. **It costs nothing** — no API keys, no cloud, no subscriptions, no rate limits. The model is already on your Mac, running on Apple's Neural Engine with a 4096-token context window.
+- **UNIX tool** — `echo "summarize this" | apfel` — pipe-friendly, JSON output, exit codes, env vars
+- **OpenAI-compatible server** — `apfel --serve` — drop-in replacement at `localhost:11434`, works with any OpenAI SDK
+- **Debug GUI** — `apfel --gui` — native SwiftUI inspector for requests, responses, and streaming events
+- **Tool calling** — function calling with schema conversion, full round-trip support
+- **Zero cost** — no API keys, no cloud, no subscriptions, no rate limits, 4096-token context window
 
 ![apfel CLI](screenshots/cli.png)
 
