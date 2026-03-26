@@ -1,0 +1,453 @@
+"""
+apfel Integration Tests — OpenAI API Schema Validation
+
+Validates that apfel's server responses conform to the OpenAI API schema
+at the structural level. This proves compatibility beyond "the Python client
+accepts it" — every field, type, and required property is checked.
+
+Schemas are derived from the official OpenAI API reference:
+https://platform.openai.com/docs/api-reference/chat/object
+
+Requires: pip install jsonschema httpx pyyaml
+Requires: apfel --serve running on localhost:11434
+
+Run: python3 -m pytest Tests/integration/openapi_spec_test.py -v
+"""
+
+import json
+import pytest
+import httpx
+from jsonschema import validate, ValidationError
+
+BASE_URL = "http://localhost:11434"
+MODEL = "apple-foundationmodel"
+
+
+# ============================================================================
+# OpenAI Schemas — ChatCompletion (non-streaming)
+# ============================================================================
+
+USAGE_SCHEMA = {
+    "type": "object",
+    "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+    "properties": {
+        "prompt_tokens": {"type": "integer"},
+        "completion_tokens": {"type": "integer"},
+        "total_tokens": {"type": "integer"},
+    },
+    "additionalProperties": True,  # OpenAI adds extra fields over time
+}
+
+TOOL_CALL_SCHEMA = {
+    "type": "object",
+    "required": ["id", "type", "function"],
+    "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string", "enum": ["function"]},
+        "function": {
+            "type": "object",
+            "required": ["name", "arguments"],
+            "properties": {
+                "name": {"type": "string"},
+                "arguments": {"type": "string"},
+            },
+        },
+    },
+}
+
+MESSAGE_SCHEMA = {
+    "type": "object",
+    "required": ["role"],
+    "properties": {
+        "role": {"type": "string", "enum": ["assistant"]},
+        "content": {"type": ["string", "null"]},
+        "tool_calls": {
+            "type": "array",
+            "items": TOOL_CALL_SCHEMA,
+        },
+    },
+}
+
+CHOICE_SCHEMA = {
+    "type": "object",
+    "required": ["index", "message", "finish_reason"],
+    "properties": {
+        "index": {"type": "integer"},
+        "message": MESSAGE_SCHEMA,
+        "finish_reason": {
+            "type": ["string", "null"],
+            "enum": ["stop", "length", "tool_calls", "content_filter", None],
+        },
+    },
+}
+
+CHAT_COMPLETION_SCHEMA = {
+    "type": "object",
+    "required": ["id", "object", "created", "model", "choices", "usage"],
+    "properties": {
+        "id": {"type": "string", "pattern": "^chatcmpl-"},
+        "object": {"type": "string", "enum": ["chat.completion"]},
+        "created": {"type": "integer"},
+        "model": {"type": "string"},
+        "choices": {"type": "array", "items": CHOICE_SCHEMA, "minItems": 1},
+        "usage": USAGE_SCHEMA,
+    },
+}
+
+
+# ============================================================================
+# OpenAI Schemas — ChatCompletionChunk (streaming)
+# ============================================================================
+
+DELTA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "role": {"type": ["string", "null"]},
+        "content": {"type": ["string", "null"]},
+        "tool_calls": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["index"],
+                "properties": {
+                    "index": {"type": "integer"},
+                    "id": {"type": "string"},
+                    "type": {"type": "string"},
+                    "function": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "arguments": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+CHUNK_CHOICE_SCHEMA = {
+    "type": "object",
+    "required": ["index", "delta"],
+    "properties": {
+        "index": {"type": "integer"},
+        "delta": DELTA_SCHEMA,
+        "finish_reason": {
+            "type": ["string", "null"],
+            "enum": ["stop", "length", "tool_calls", "content_filter", None],
+        },
+    },
+}
+
+CHAT_COMPLETION_CHUNK_SCHEMA = {
+    "type": "object",
+    "required": ["id", "object", "created", "model", "choices"],
+    "properties": {
+        "id": {"type": "string", "pattern": "^chatcmpl-"},
+        "object": {"type": "string", "enum": ["chat.completion.chunk"]},
+        "created": {"type": "integer"},
+        "model": {"type": "string"},
+        "choices": {"type": "array", "items": CHUNK_CHOICE_SCHEMA},
+    },
+}
+
+
+# ============================================================================
+# OpenAI Schemas — Models List
+# ============================================================================
+
+MODEL_OBJECT_SCHEMA = {
+    "type": "object",
+    "required": ["id", "object", "created", "owned_by"],
+    "properties": {
+        "id": {"type": "string"},
+        "object": {"type": "string", "enum": ["model"]},
+        "created": {"type": "integer"},
+        "owned_by": {"type": "string"},
+    },
+    "additionalProperties": True,
+}
+
+MODELS_LIST_SCHEMA = {
+    "type": "object",
+    "required": ["object", "data"],
+    "properties": {
+        "object": {"type": "string", "enum": ["list"]},
+        "data": {"type": "array", "items": MODEL_OBJECT_SCHEMA, "minItems": 1},
+    },
+}
+
+
+# ============================================================================
+# OpenAI Schemas — Error Response
+# ============================================================================
+
+ERROR_RESPONSE_SCHEMA = {
+    "type": "object",
+    "required": ["error"],
+    "properties": {
+        "error": {
+            "type": "object",
+            "required": ["message", "type"],
+            "properties": {
+                "message": {"type": "string"},
+                "type": {"type": "string"},
+                "param": {"type": ["string", "null"]},
+                "code": {"type": ["string", "null"]},
+            },
+        },
+    },
+}
+
+
+# ============================================================================
+# Health Endpoint Schema (apfel-specific, not OpenAI)
+# ============================================================================
+
+HEALTH_SCHEMA = {
+    "type": "object",
+    "required": ["model", "context_window", "model_available"],
+    "properties": {
+        "model": {"type": "string"},
+        "context_window": {"type": "integer"},
+        "model_available": {"type": "boolean"},
+    },
+    "additionalProperties": True,
+}
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+def chat(messages, **kwargs):
+    """Send a non-streaming chat completion request, return parsed JSON."""
+    payload = {"model": MODEL, "messages": messages, **kwargs}
+    resp = httpx.post(f"{BASE_URL}/v1/chat/completions", json=payload, timeout=60)
+    return resp.status_code, resp.json()
+
+
+def chat_stream(messages, **kwargs):
+    """Send a streaming chat completion request, return list of parsed chunks."""
+    payload = {"model": MODEL, "messages": messages, "stream": True, **kwargs}
+    chunks = []
+    with httpx.stream("POST", f"{BASE_URL}/v1/chat/completions",
+                       json=payload, timeout=60) as resp:
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                chunks.append(json.loads(data))
+    return chunks
+
+
+# ============================================================================
+# Tests — Prerequisite
+# ============================================================================
+
+def test_server_running():
+    """Server must be running for all other tests."""
+    resp = httpx.get(f"{BASE_URL}/health", timeout=5)
+    assert resp.status_code == 200
+
+
+# ============================================================================
+# Tests — Non-streaming chat completion
+# ============================================================================
+
+def test_chat_completion_schema():
+    """Non-streaming response matches OpenAI ChatCompletion schema."""
+    status, data = chat([{"role": "user", "content": "Say hi."}])
+    assert status == 200
+    validate(instance=data, schema=CHAT_COMPLETION_SCHEMA)
+
+
+def test_chat_completion_id_format():
+    """Response id starts with 'chatcmpl-'."""
+    _, data = chat([{"role": "user", "content": "Say ok."}])
+    assert data["id"].startswith("chatcmpl-")
+
+
+def test_chat_completion_object_field():
+    """object field is exactly 'chat.completion'."""
+    _, data = chat([{"role": "user", "content": "Say yes."}])
+    assert data["object"] == "chat.completion"
+
+
+def test_chat_completion_usage_sums():
+    """total_tokens == prompt_tokens + completion_tokens."""
+    _, data = chat([{"role": "user", "content": "Count to 3."}])
+    u = data["usage"]
+    assert u["total_tokens"] == u["prompt_tokens"] + u["completion_tokens"]
+
+
+def test_chat_completion_finish_reason_stop():
+    """Normal completion finishes with 'stop'."""
+    _, data = chat([{"role": "user", "content": "Say hello."}])
+    assert data["choices"][0]["finish_reason"] == "stop"
+
+
+# ============================================================================
+# Tests — Streaming chat completion
+# ============================================================================
+
+def test_streaming_chunks_schema():
+    """Every streaming chunk matches the ChatCompletionChunk schema.
+    The final chunk may be a usage-only object (no id/object/choices) — OpenAI
+    sends this when stream_options.include_usage is set; apfel always sends it."""
+    chunks = chat_stream([{"role": "user", "content": "Say hi."}])
+    assert len(chunks) > 0
+    for chunk in chunks:
+        if "choices" in chunk:
+            validate(instance=chunk, schema=CHAT_COMPLETION_CHUNK_SCHEMA)
+        else:
+            # Usage-only final chunk
+            validate(instance=chunk, schema={"type": "object", "required": ["usage"],
+                                             "properties": {"usage": USAGE_SCHEMA}})
+
+
+def test_streaming_first_chunk_has_role():
+    """First chunk's delta should contain the role."""
+    chunks = chat_stream([{"role": "user", "content": "Hello."}])
+    first_with_choices = next(c for c in chunks if c["choices"])
+    assert first_with_choices["choices"][0]["delta"].get("role") == "assistant"
+
+
+def test_streaming_last_chunk_finish_reason():
+    """Last chunk with choices should have finish_reason='stop'."""
+    chunks = chat_stream([{"role": "user", "content": "Say bye."}])
+    chunks_with_choices = [c for c in chunks if c.get("choices")]
+    last = chunks_with_choices[-1]
+    assert last["choices"][0]["finish_reason"] == "stop"
+
+
+def test_streaming_object_field():
+    """Streaming chunks with choices have object='chat.completion.chunk'."""
+    chunks = chat_stream([{"role": "user", "content": "Ok."}])
+    for chunk in chunks:
+        if "object" in chunk:
+            assert chunk["object"] == "chat.completion.chunk"
+
+
+# ============================================================================
+# Tests — Tool calling schema
+# ============================================================================
+
+def test_tool_call_response_schema():
+    """Tool call response matches schema with finish_reason='tool_calls'."""
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get weather for a city",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+    }]
+    status, data = chat(
+        [{"role": "user", "content": "What's the weather in Vienna?"}],
+        tools=tools,
+    )
+    assert status == 200
+    validate(instance=data, schema=CHAT_COMPLETION_SCHEMA)
+    assert data["choices"][0]["finish_reason"] == "tool_calls"
+    tc = data["choices"][0]["message"]["tool_calls"]
+    assert len(tc) > 0
+    # Each tool call must have id, type, function with name + arguments
+    for call in tc:
+        validate(instance=call, schema=TOOL_CALL_SCHEMA)
+        # arguments must be valid JSON string
+        json.loads(call["function"]["arguments"])
+
+
+# ============================================================================
+# Tests — Models endpoint
+# ============================================================================
+
+def test_models_list_schema():
+    """GET /v1/models matches the OpenAI Models List schema."""
+    resp = httpx.get(f"{BASE_URL}/v1/models", timeout=10)
+    assert resp.status_code == 200
+    validate(instance=resp.json(), schema=MODELS_LIST_SCHEMA)
+
+
+# ============================================================================
+# Tests — Error responses
+# ============================================================================
+
+def test_error_empty_messages_schema():
+    """Error from empty messages matches OpenAI error schema."""
+    status, data = chat([])
+    assert status == 400
+    validate(instance=data, schema=ERROR_RESPONSE_SCHEMA)
+
+
+def test_error_invalid_json_schema():
+    """Error from malformed JSON matches OpenAI error schema."""
+    resp = httpx.post(
+        f"{BASE_URL}/v1/chat/completions",
+        content=b"not json",
+        headers={"content-type": "application/json"},
+        timeout=10,
+    )
+    assert resp.status_code == 400
+    validate(instance=resp.json(), schema=ERROR_RESPONSE_SCHEMA)
+
+
+def test_error_image_rejection_schema():
+    """Image rejection error matches OpenAI error schema."""
+    status, data = chat([{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What's this?"},
+            {"type": "image_url", "image_url": {"url": "http://example.com/x.jpg"}},
+        ],
+    }])
+    assert status == 400
+    validate(instance=data, schema=ERROR_RESPONSE_SCHEMA)
+
+
+# ============================================================================
+# Tests — Stub endpoints (501)
+# ============================================================================
+
+def test_completions_501_schema():
+    """/v1/completions 501 response matches error schema."""
+    resp = httpx.post(f"{BASE_URL}/v1/completions",
+                      json={"model": MODEL, "prompt": "hi"}, timeout=10)
+    assert resp.status_code == 501
+    validate(instance=resp.json(), schema=ERROR_RESPONSE_SCHEMA)
+
+
+def test_embeddings_501_schema():
+    """/v1/embeddings 501 response matches error schema."""
+    resp = httpx.post(f"{BASE_URL}/v1/embeddings",
+                      json={"model": MODEL, "input": "hi"}, timeout=10)
+    assert resp.status_code == 501
+    validate(instance=resp.json(), schema=ERROR_RESPONSE_SCHEMA)
+
+
+# ============================================================================
+# Tests — Health endpoint
+# ============================================================================
+
+def test_health_schema():
+    """/health response matches expected schema."""
+    resp = httpx.get(f"{BASE_URL}/health", timeout=10)
+    assert resp.status_code == 200
+    validate(instance=resp.json(), schema=HEALTH_SCHEMA)
+
+
+# ============================================================================
+# Tests — CORS
+# ============================================================================
+
+def test_cors_preflight():
+    """OPTIONS returns CORS headers."""
+    resp = httpx.options(f"{BASE_URL}/v1/chat/completions", timeout=10)
+    assert resp.status_code == 204
+    assert "access-control-allow-origin" in resp.headers
