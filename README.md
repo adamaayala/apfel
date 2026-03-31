@@ -1,8 +1,8 @@
 # apfel
 
 [![Version 0.6.3](https://img.shields.io/badge/version-0.6.3-blue)](https://github.com/Arthur-Ficial/apfel)
-[![Swift 6.3](https://img.shields.io/badge/Swift-6.3-F05138?logo=swift&logoColor=white)](https://swift.org)
-[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
+[![Swift 6.2+](https://img.shields.io/badge/Swift-6.2%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![macOS 26.4+](https://img.shields.io/badge/macOS-26.4%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![No Xcode Required](https://img.shields.io/badge/Xcode-not%20required-orange)](https://developer.apple.com/xcode/resources/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![100% On-Device](https://img.shields.io/badge/inference-100%25%20on--device-green)](https://developer.apple.com/documentation/foundationmodels)
@@ -30,9 +30,9 @@ Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundati
 | Requirement | Details |
 |-------------|---------|
 | **Mac** | Apple Silicon (M1 or later) |
-| **macOS** | macOS 26 (Tahoe) or later |
+| **macOS** | **macOS 26.4+** recommended (26.0 minimum, but 26.4 adds real token counting) |
 | **Apple Intelligence** | Must be [enabled in System Settings](https://support.apple.com/en-us/108380) |
-| **Swift** | Swift 6.3+ (comes with Command Line Tools) |
+| **Swift** | Swift 6.2+ (comes with Command Line Tools) |
 | **Xcode** | **NOT required** - Command Line Tools only |
 
 Check if you're ready:
