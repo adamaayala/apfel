@@ -1,6 +1,6 @@
 # apfel
 
-[![Version 0.6.11](https://img.shields.io/badge/version-0.6.11-blue)](https://github.com/Arthur-Ficial/apfel)
+[![Version 0.6.12](https://img.shields.io/badge/version-0.6.12-blue)](https://github.com/Arthur-Ficial/apfel)
 [![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![No Xcode Required](https://img.shields.io/badge/Xcode-not%20required-orange)](https://developer.apple.com/xcode/resources/)
@@ -15,7 +15,7 @@ No API keys. No cloud. No subscriptions. No per-token billing. The AI is already
 
 Every Mac with Apple Silicon has a **built-in LLM** - Apple's on-device foundation model, shipped as part of Apple Intelligence. Apple provides the [FoundationModels framework](https://developer.apple.com/documentation/foundationmodels) (macOS 26+) to access it, but only exposes it through Siri and system features. **apfel wraps it** in a CLI and an HTTP server - so you can actually use it. All inference runs **on-device**, no network calls.
 
-- **UNIX tool** - `echo "summarize this" | apfel` - pipe-friendly, JSON output, exit codes, env vars
+- **UNIX tool** - `echo "summarize this" | apfel` - pipe-friendly, file attachments, JSON output, exit codes
 - **OpenAI-compatible server** - `apfel --serve` - drop-in replacement at `localhost:11434`, works with any OpenAI SDK
 - **Tool calling** - function calling with schema conversion, full round-trip support
 - **Zero cost** - no API keys, no cloud, no subscriptions, 4096-token context window
@@ -57,6 +57,15 @@ apfel --stream "Write a haiku about code"
 
 # Pipe input
 echo "Summarize: $(cat README.md)" | apfel
+
+# Attach file content to prompt
+apfel -f README.md "Summarize this project"
+
+# Attach multiple files
+apfel -f old.swift -f new.swift "What changed between these two files?"
+
+# Combine files with piped input
+git diff HEAD~1 | apfel -f CONVENTIONS.md "Review this diff against our conventions"
 
 # JSON output for scripting
 apfel -o json "Translate to German: hello" | jq .content
@@ -112,6 +121,46 @@ apfel --chat --context-strategy sliding-window --context-max-turns 6
 apfel --chat --context-strategy summarize        # compress old turns via on-device model
 apfel --chat --context-strategy strict           # error on overflow, no trimming
 apfel --chat --context-output-reserve 256        # custom output token reserve
+```
+
+### File attachments (`-f/--file`)
+
+Attach one or more files to any prompt with `-f`. File contents are prepended to your prompt text. The flag is repeatable - use it as many times as you need.
+
+```bash
+# Explain a file
+apfel -f main.swift "Explain what this code does"
+
+# Compare two files
+apfel -f before.txt -f after.txt "What are the differences?"
+
+# Code review a git diff
+jj diff | apfel -f CONVENTIONS.md "Review this diff against our coding conventions"
+git diff HEAD~1 | apfel -f style-guide.md "Any style violations in this diff?"
+
+# Summarize a commit
+git show HEAD | apfel -f CHANGELOG.md "Write a changelog entry for this commit"
+
+# Combine with other flags
+apfel -f data.csv -o json "Extract the top 5 rows" | jq .content
+apfel -f code.py -s "You are a senior code reviewer" "Find bugs"
+apfel -f spec.md --stream "Generate test cases for this spec"
+```
+
+Files, stdin, and prompt arguments all compose naturally:
+
+```bash
+# File only (file content becomes the prompt)
+apfel -f poem.txt
+
+# File + prompt argument
+apfel -f poem.txt "Translate this to German"
+
+# Stdin + prompt argument
+echo "some text" | apfel "Summarize this"
+
+# File + stdin + prompt argument (all three combined)
+echo "extra context" | apfel -f code.swift "Explain this code with the context above"
 ```
 
 ## Demos
@@ -225,6 +274,7 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 
 ```
 apfel [OPTIONS] <prompt>       Single prompt
+apfel -f <file> <prompt>       Attach file content to prompt
 apfel --chat                   Interactive conversation
 apfel --stream <prompt>        Stream response tokens
 apfel --serve                  Start OpenAI-compatible server
@@ -236,6 +286,7 @@ apfel --release                Show detailed release and build info
 
 | Flag | Description |
 |------|-------------|
+| `-f, --file <path>` | Attach file content to prompt (repeatable) |
 | `-s, --system <text>` | System prompt |
 | `--system-file <path>` | Read system prompt from file |
 | `-o, --output <fmt>` | Output format: `plain` or `json` |
