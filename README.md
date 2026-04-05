@@ -1,6 +1,6 @@
 # apfel
 
-[![Version 0.7.7](https://img.shields.io/badge/version-0.7.7-blue)](https://github.com/Arthur-Ficial/apfel)
+[![Version 0.7.8](https://img.shields.io/badge/version-0.7.8-blue)](https://github.com/Arthur-Ficial/apfel)
 [![Swift 6.3+](https://img.shields.io/badge/Swift-6.3%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![No Xcode Required](https://img.shields.io/badge/Xcode-not%20required-orange)](https://developer.apple.com/xcode/resources/)
@@ -49,6 +49,8 @@ Troubleshooting: [docs/install.md](docs/install.md)
 ## Quick Start
 
 ### UNIX tool
+
+Shell note: if your prompt contains `!`, prefer single quotes in `zsh`/`bash` so history expansion does not break copy-paste. Example: `apfel 'Hello, Mac!'`
 
 ```bash
 # Single prompt
@@ -316,16 +318,54 @@ Full API spec: [openai/openai-openapi](https://github.com/openai/openai-openapi)
 ## CLI Reference
 
 ```
-apfel [OPTIONS] <prompt>                Single prompt
-apfel -f <file> <prompt>                Attach file content to prompt
-apfel --mcp <server.py> <prompt>        Use MCP tools (repeatable)
-apfel --chat                            Interactive conversation
-apfel --stream <prompt>                 Stream response tokens
-apfel --serve                           Start OpenAI-compatible server
-apfel --serve --mcp <server.py>         Server with MCP tools
-apfel --benchmark                       Run internal performance benchmarks
-apfel --model-info                      Print model capabilities
-apfel --update                          Check for updates and upgrade
+MODES
+  apfel <prompt>                          Single prompt (default)
+  apfel --stream <prompt>                 Stream response tokens
+  apfel --chat                            Interactive conversation
+  apfel --serve                           Start OpenAI-compatible server
+  apfel --benchmark                       Run internal performance benchmarks
+
+INPUT
+  apfel -f, --file <path> <prompt>        Attach file content (repeatable)
+  apfel -s, --system <text> <prompt>      Set system prompt
+  apfel --system-file <path> <prompt>     Read system prompt from file
+  apfel --mcp <server.py> <prompt>        Attach MCP tool server (repeatable)
+
+OUTPUT
+  -o, --output <fmt>                      Output format: plain, json
+  -q, --quiet                             Suppress non-essential output
+  --no-color                              Disable ANSI colors
+
+MODEL
+  --temperature <n>                       Sampling temperature (e.g., 0.7)
+  --seed <n>                              Random seed for reproducibility
+  --max-tokens <n>                        Maximum response tokens
+  --permissive                            Use permissive content guardrails
+
+CONTEXT (--chat)
+  --context-strategy <s>                  newest-first, oldest-first, sliding-window, summarize, strict
+  --context-max-turns <n>                 Max history turns (sliding-window only)
+  --context-output-reserve <n>            Tokens reserved for output (default: 512)
+
+SERVER (--serve)
+  --port <n>                              Server port (default: 11434)
+  --host <addr>                           Bind address (default: 127.0.0.1)
+  --cors                                  Enable CORS headers
+  --allowed-origins <origins>             Comma-separated allowed origins
+  --no-origin-check                       Disable origin checking
+  --token <secret>                        Require Bearer token auth
+  --token-auto                            Generate random Bearer token
+  --public-health                         Keep /health unauthenticated
+  --footgun                               Disable all protections
+  --max-concurrent <n>                    Max concurrent requests (default: 5)
+  --debug                                 Verbose logging + /v1/logs endpoints
+
+META
+  -v, --version                           Print version
+  -h, --help                              Show help
+  --release                               Detailed build info
+  --model-info                            Print model capabilities
+  --update                                Check for updates via Homebrew
 ```
 
 **General options** (all modes):

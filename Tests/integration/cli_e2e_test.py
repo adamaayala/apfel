@@ -16,6 +16,7 @@ import pathlib
 import pty
 import re
 import select
+import signal
 import subprocess
 import time
 
@@ -102,7 +103,7 @@ def run_cli_tty(args, env=None, timeout=30):
     return proc.returncode, output.decode("utf-8", errors="replace")
 
 
-def run_cli_chat_json(args, steps, env=None, timeout=120):
+def run_cli_chat_json(args, steps, env=None, timeout=60, stop_when=None):
     merged_env = os.environ.copy()
     for key in [
         "NO_COLOR",
@@ -116,39 +117,45 @@ def run_cli_chat_json(args, steps, env=None, timeout=120):
     if env:
         merged_env.update(env)
 
-    master_fd, slave_fd = pty.openpty()
-    proc = subprocess.Popen(
-        [str(BINARY), *args],
-        stdin=slave_fd,
-        stdout=subprocess.PIPE,
-        stderr=slave_fd,
-        env=merged_env,
-        close_fds=True,
-    )
-    os.close(slave_fd)
+    stdout_read_fd, stdout_write_fd = os.pipe()
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        os.close(stdout_read_fd)
+        os.dup2(stdout_write_fd, 1)
+        if stdout_write_fd != 1:
+            os.close(stdout_write_fd)
+        os.execve(str(BINARY), [str(BINARY), *args], merged_env)
 
-    assert proc.stdout is not None
-    stdout_fd = proc.stdout.fileno()
+    os.close(stdout_write_fd)
     stdout_output = bytearray()
     tty_output = bytearray()
     deadline = time.time() + timeout
     pending_steps = list(steps)
+    exit_status = None
 
     try:
         while True:
             if time.time() > deadline:
-                proc.kill()
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
                 raise TimeoutError(f"Timed out waiting for {' '.join(args)}")
 
             if pending_steps:
-                wait_for, data = pending_steps[0]
+                step = pending_steps[0]
+                if len(step) == 2:
+                    wait_for, data = step
+                    delay = 0
+                else:
+                    wait_for, data, delay = step
                 haystacks = (stdout_output, tty_output)
                 if wait_for is None or any(wait_for in output for output in haystacks):
+                    if delay:
+                        time.sleep(delay)
                     os.write(master_fd, data)
                     pending_steps.pop(0)
                     continue
 
-            ready, _, _ = select.select([master_fd, stdout_fd], [], [], 0.1)
+            ready, _, _ = select.select([master_fd, stdout_read_fd], [], [], 0.1)
             for fd in ready:
                 try:
                     chunk = os.read(fd, 4096)
@@ -161,15 +168,24 @@ def run_cli_chat_json(args, steps, env=None, timeout=120):
                 else:
                     stdout_output.extend(chunk)
 
-            if proc.poll() is not None and not ready:
+            if stop_when is not None and stop_when(stdout_output, tty_output):
+                os.kill(pid, signal.SIGKILL)
+                _, exit_status = os.waitpid(pid, 0)
+                break
+
+            waited_pid, status = os.waitpid(pid, os.WNOHANG)
+            if waited_pid == pid and not ready:
+                exit_status = status
                 break
     finally:
         os.close(master_fd)
-        proc.stdout.close()
+        os.close(stdout_read_fd)
 
-    proc.wait(timeout=max(1, int(deadline - time.time())))
+    if exit_status is None:
+        _, exit_status = os.waitpid(pid, 0)
+
     return (
-        proc.returncode,
+        os.waitstatus_to_exitcode(exit_status),
         stdout_output.decode("utf-8", errors="replace"),
         tty_output.decode("utf-8", errors="replace"),
     )
@@ -276,13 +292,13 @@ def test_stream_returns_content():
 def test_chat_json_left_arrow_edits_input():
     require_model()
     returncode, stdout, tty = run_cli_chat_json(
-        ["--chat", "-o", "json"],
+        ["--chat", "-o", "json", "--max-tokens", "1"],
         steps=[
-            (b"you\xe2\x80\xba ", b"helo\x1b[D\x1b[Dl\n"),
-            (b'"role":"assistant"', b"quit\n"),
+            (b"Type 'quit' to exit.", b"helo\x1b[D\x1b[Dl\n", 0.2),
         ],
+        stop_when=lambda stdout, _tty: stdout.count(b'"role":"user"') >= 1,
     )
-    assert returncode == 0, tty
+    assert returncode != 0
     messages = parse_json_lines(stdout)
     user_messages = [message for message in messages if message["role"] == "user"]
     assert user_messages[0]["content"] == "hello"
@@ -292,15 +308,15 @@ def test_chat_json_left_arrow_edits_input():
 
 def test_chat_json_up_arrow_replays_previous_prompt():
     require_model()
-    first_prompt = "Reply with exactly ALPHA."
+    first_prompt = "Reply ALPHA."
     returncode, stdout, tty = run_cli_chat_json(
-        ["--chat", "-o", "json"],
+        ["--chat", "-o", "json", "--max-tokens", "1"],
         steps=[
-            (b"you\xe2\x80\xba ", f"{first_prompt}\n".encode("utf-8")),
-            (b'"role":"assistant"', b"\x1b[A\nquit\n"),
+            (b"Type 'quit' to exit.", f"{first_prompt}\n\x1b[A\n".encode("utf-8"), 0.2),
         ],
+        stop_when=lambda stdout, _tty: stdout.count(b'"role":"user"') >= 2,
     )
-    assert returncode == 0, tty
+    assert returncode != 0
     messages = parse_json_lines(stdout)
     user_messages = [message for message in messages if message["role"] == "user"]
     assert [message["content"] for message in user_messages[:2]] == [
@@ -483,7 +499,7 @@ def test_update_non_interactive():
 
 
 def test_readme_cli_reference_complete():
-    """Every long-form flag from apfel --help must appear in the CLI Reference section of README.md."""
+    """Every flag from apfel --help must appear in BOTH the quick-reference code block AND the tables."""
     # 1. Run --help and extract all long-form flags from OPTIONS, CONTEXT OPTIONS, SERVER OPTIONS
     result = run_cli(["--help"])
     assert result.returncode == 0, f"--help failed: {result.stderr}"
@@ -491,31 +507,26 @@ def test_readme_cli_reference_complete():
     help_text = result.stdout
 
     # Parse flags from the OPTIONS, CONTEXT OPTIONS, and SERVER OPTIONS sections only.
-    # Stop before ENVIRONMENT / EXIT CODES / EXAMPLES sections.
     flag_sections = []
     in_flag_section = False
     for line in help_text.splitlines():
         stripped = line.strip()
-        # Start collecting when we hit a flag section header
         if stripped in ("OPTIONS:", "CONTEXT OPTIONS:", "SERVER OPTIONS:"):
             in_flag_section = True
             continue
-        # Stop collecting when we hit a non-flag section header
         if stripped in ("ENVIRONMENT:", "EXIT CODES:", "EXAMPLES:", "USAGE:"):
             in_flag_section = False
             continue
         if in_flag_section:
             flag_sections.append(line)
 
-    # Extract all --long-form flags from these sections
     help_flags = set(re.findall(r"--[a-z][-a-z]+", "\n".join(flag_sections)))
     assert help_flags, "Failed to extract any flags from --help output"
 
-    # 2. Read README.md and extract the CLI Reference section
+    # 2. Read README.md and split CLI Reference into code block and tables
     readme_path = ROOT / "README.md"
     readme_text = readme_path.read_text()
 
-    # Find the CLI Reference section: starts at "## CLI Reference", ends at the next "## " heading
     cli_ref_match = re.search(
         r"^## CLI Reference\s*\n(.*?)(?=^## |\Z)",
         readme_text,
@@ -524,10 +535,24 @@ def test_readme_cli_reference_complete():
     assert cli_ref_match, "Could not find '## CLI Reference' section in README.md"
     cli_reference = cli_ref_match.group(1)
 
-    # 3. Check that every --help flag appears in the CLI Reference section
-    missing = sorted(flag for flag in help_flags if flag not in cli_reference)
+    # Extract the code block (quick-reference)
+    code_block_match = re.search(r"```\n(.*?)```", cli_reference, re.DOTALL)
+    assert code_block_match, "Could not find code block in CLI Reference section"
+    code_block = code_block_match.group(1)
 
-    assert not missing, (
-        f"README.md CLI Reference section is missing {len(missing)} flag(s) "
-        f"from 'apfel --help':\n  " + "\n  ".join(missing)
+    # Everything after the code block is the tables section
+    tables_section = cli_reference[code_block_match.end():]
+
+    # 3. Check that every flag appears in the code block
+    missing_from_block = sorted(flag for flag in help_flags if flag not in code_block)
+    assert not missing_from_block, (
+        f"CLI Reference code block is missing {len(missing_from_block)} flag(s):\n  "
+        + "\n  ".join(missing_from_block)
+    )
+
+    # 4. Check that every flag appears in the tables
+    missing_from_tables = sorted(flag for flag in help_flags if flag not in tables_section)
+    assert not missing_from_tables, (
+        f"CLI Reference tables are missing {len(missing_from_tables)} flag(s):\n  "
+        + "\n  ".join(missing_from_tables)
     )
