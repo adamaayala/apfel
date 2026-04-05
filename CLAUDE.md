@@ -80,6 +80,11 @@ Integration tests (requires server running):
 python3 -m pytest Tests/integration/ -v    # release-binary integration tests
 ```
 
+Regenerate `docs/EXAMPLES.md` (runs 53 prompts against the installed binary, captures real unedited output):
+```bash
+bash scripts/generate-examples.sh          # ~2 minutes, overwrites docs/EXAMPLES.md
+```
+
 ## Key Files
 
 | Area | Files |
@@ -100,6 +105,7 @@ python3 -m pytest Tests/integration/ -v    # release-binary integration tests
 | Tests | `Tests/apfelTests/` (129 unit), `Tests/integration/` (131 integration) |
 | Tickets | `open-tickets/` |
 | Docs | `docs/` (brew-install, EXAMPLES, release, tool-calling-guide) |
+| Scripts | `scripts/generate-examples.sh` (regenerates docs/EXAMPLES.md), `scripts/write-homebrew-formula.sh` |
 
 ## Handling GitHub Issues
 
