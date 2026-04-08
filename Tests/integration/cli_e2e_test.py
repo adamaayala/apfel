@@ -810,3 +810,27 @@ def test_readme_cli_reference_complete():
         f"CLI Reference examples block is missing {len(missing_from_examples)} flag(s):\n  "
         + "\n  ".join(missing_from_examples)
     )
+
+
+def test_apfel_mcp_env_var():
+    """APFEL_MCP env var should attach MCP servers (same as --mcp flag)."""
+    require_model()
+    mcp_path = str(ROOT / "mcp" / "calculator" / "server.py")
+    result = run_cli(
+        ["What is 3 + 4? Use the add tool."],
+        env={"APFEL_MCP": mcp_path},
+        timeout=90,
+    )
+    assert result.returncode == 0
+    # stderr must show MCP tool discovery ("mcp: ... add, subtract, ...")
+    assert "mcp:" in result.stderr.lower(), \
+        f"APFEL_MCP env var not loading MCP server. stderr: {result.stderr[:300]}"
+
+
+def test_homebrew_formula_has_service_block():
+    """Homebrew formula must include a service do block for brew services."""
+    formula_script = ROOT / "scripts" / "write-homebrew-formula.sh"
+    content = formula_script.read_text()
+    assert "service do" in content, "Formula missing 'service do' block"
+    assert "keep_alive" in content, "Formula service block missing keep_alive"
+    assert "log_path" in content, "Formula service block missing log_path"

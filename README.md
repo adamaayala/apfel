@@ -491,6 +491,7 @@ See [Server Security](docs/server-security.md) for detailed documentation on sec
 | `APFEL_CONTEXT_STRATEGY` | Default context strategy |
 | `APFEL_CONTEXT_MAX_TURNS` | Max turns for sliding-window |
 | `APFEL_CONTEXT_OUTPUT_RESERVE` | Tokens reserved for output |
+| `APFEL_MCP` | MCP server paths (colon-separated) |
 | `NO_COLOR` | Disable colors ([no-color.org](https://no-color.org)) |
 
 ## Architecture
@@ -505,6 +506,28 @@ HTTP Server (/v1/*) ───────┘   (100% on-device, zero network)
 ```
 
 Swift 6.3 strict concurrency. Three targets: `ApfelCore` (pure logic, unit-testable), `apfel` (CLI + server), `apfel-tests` (pure Swift runner, no XCTest). **No Xcode required.**
+
+## Background Service
+
+Run the server in the background (like Ollama):
+
+```bash
+brew services start apfel          # Start at login, auto-restart
+brew services stop apfel           # Stop
+brew services restart apfel        # Restart
+brew services info apfel           # Status
+tail -f /opt/homebrew/var/log/apfel.log  # Logs
+```
+
+Custom port or token via environment:
+
+```bash
+APFEL_PORT=8080 brew services start apfel
+APFEL_TOKEN=$(uuidgen) brew services start apfel
+APFEL_MCP=/path/to/server.py brew services start apfel
+```
+
+See [docs/background-service.md](docs/background-service.md) for details.
 
 ## Build & Test
 

@@ -44,6 +44,13 @@ class Apfel < Formula
     bin.install "apfel"
   end
 
+  service do
+    run [opt_bin/"apfel", "--serve"]
+    keep_alive true
+    log_path var/"log/apfel.log"
+    error_log_path var/"log/apfel.log"
+  end
+
   def caveats
     s = <<~EOS
       apfel runs entirely on-device and requires Apple Intelligence to be enabled.

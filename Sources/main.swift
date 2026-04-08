@@ -86,7 +86,8 @@ var serverOriginCheckEnabled: Bool = true
 var serverToken: String? = env["APFEL_TOKEN"]
 var serverTokenAuto: Bool = false
 var serverPublicHealth: Bool = false
-var mcpServerPaths: [String] = []
+var mcpServerPaths: [String] = env["APFEL_MCP"]?
+    .split(separator: ":").map(String.init).filter { !$0.isEmpty } ?? []
 var cliTemperature: Double? = Double(env["APFEL_TEMPERATURE"] ?? "")
 var cliSeed: UInt64? = nil
 var cliMaxTokens: Int? = Int(env["APFEL_MAX_TOKENS"] ?? "").flatMap { $0 > 0 ? $0 : nil }

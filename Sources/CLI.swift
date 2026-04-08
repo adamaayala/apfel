@@ -464,6 +464,7 @@ func printUsage() {
 
     \(styled("ENVIRONMENT:", .yellow, .bold))
       APFEL_SYSTEM_PROMPT       Default system prompt
+      APFEL_MCP                 MCP server paths (colon-separated)
       APFEL_HOST                Server bind address [default: 127.0.0.1]
       APFEL_PORT                Server port [default: 11434]
       APFEL_TOKEN               Bearer token for server authentication
