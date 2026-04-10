@@ -563,6 +563,12 @@ apfel works with any tool that speaks the OpenAI API. Verified configs:
 - [apfel-clip](https://github.com/Arthur-Ficial/apfel-clip) - AI clipboard actions from the menu bar
 - [apfel-gui](https://github.com/Arthur-Ficial/apfel-gui) - Native macOS debug GUI (inspector, MCP viewer, TTS/STT)
 
+## Community Projects
+
+Things the community has built on top of apfel. Built something? Open an issue and we will add it.
+
+- [apfelclaw](https://apfelclaw.yamanlabs.com/) ([gh](https://github.com/julianyaman/apfelclaw)) by [@julianYaman](https://github.com/julianYaman) - Local AI agent that reads files, calendar, mail, and Mac status via read-only tools. Swift + Vapor backend, Bun TUI, optional Telegram remote.
+
 ## Examples
 
 See [docs/EXAMPLES.md](docs/EXAMPLES.md) for 50+ real prompts with unedited model output.
