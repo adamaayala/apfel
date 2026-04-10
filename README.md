@@ -342,7 +342,8 @@ INPUT
   apfel -f, --file <path> <prompt>        Attach file content (repeatable)
   apfel -s, --system <text> <prompt>      Set system prompt
   apfel --system-file <path> <prompt>     Read system prompt from file
-  apfel --mcp <server.py> <prompt>        Attach MCP tool server (repeatable)
+  apfel --mcp <path|url> <prompt>         Attach local or remote MCP tool server (repeatable)
+  apfel --mcp-token <token> <prompt>     Bearer token for remote MCP servers
   apfel --mcp-timeout <n> <prompt>       MCP timeout in seconds [default: 5]
 
 OUTPUT
@@ -411,9 +412,11 @@ apfel -s "You are a pirate" "What is recursion?"
 # --system-file
 apfel --system-file persona.txt "Introduce yourself"
 
-# --mcp, --mcp-timeout
+# --mcp, --mcp-token, --mcp-timeout
 apfel --mcp ./mcp/calculator/server.py "What is 15 times 27?"
 apfel --mcp ./calc.py --mcp ./weather.py "Use both tools"
+apfel --mcp https://mcp.example.com/v1 "Remote MCP server"
+APFEL_MCP_TOKEN=mytoken apfel --mcp https://mcp.example.com/v1 "With auth"
 apfel --mcp-timeout 30 --mcp ./slow-remote-server.py "hello"
 
 # -o, --output
