@@ -76,6 +76,30 @@ func runCLIArgumentsTests() {
     }
 
     // ========================================================================
+    // MARK: - acceptsStdinInput (GH-82)
+    // ========================================================================
+
+    test("single mode accepts stdin input") {
+        let args = try CLIArguments.parse(["hello"])
+        try assertTrue(args.mode.acceptsStdinInput)
+    }
+
+    test("stream mode accepts stdin input") {
+        let args = try CLIArguments.parse(["--stream", "hello"])
+        try assertTrue(args.mode.acceptsStdinInput)
+    }
+
+    test("chat mode does not accept stdin input") {
+        let args = try CLIArguments.parse(["--chat"])
+        try assertTrue(!args.mode.acceptsStdinInput)
+    }
+
+    test("serve mode does not accept stdin input") {
+        let args = try CLIArguments.parse(["--serve"])
+        try assertTrue(!args.mode.acceptsStdinInput)
+    }
+
+    // ========================================================================
     // MARK: - Prompt parsing
     // ========================================================================
 

@@ -601,6 +601,70 @@ def test_file_flag_with_stdin_and_prompt():
         tmp.unlink(missing_ok=True)
 
 
+# --- Stdin + --stream tests (GH-82) ---
+
+
+def test_stdin_with_stream_flag():
+    """Piped stdin + --stream + prompt should combine (GH-82)."""
+    require_model()
+    result = run_cli(
+        ["-q", "-o", "json", "--stream",
+         "What city is mentioned above? Reply with just the city name."],
+        input_text="The capital of France is Paris.",
+        timeout=90,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert "paris" in payload["content"].lower()
+
+
+def test_stdin_only_with_stream_flag():
+    """Piped stdin as sole prompt with --stream (GH-82)."""
+    require_model()
+    result = run_cli(
+        ["-q", "-o", "json", "--stream"],
+        input_text="What is 2+2? Reply with just the number.",
+        timeout=90,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert payload["content"].strip()
+
+
+def test_file_flag_with_stdin_and_stream():
+    """apfel -f <file> --stream <prompt> with piped stdin should include all three (GH-82)."""
+    require_model()
+    tmp = pathlib.Path("/tmp/apfel_test_file_stdin_stream.txt")
+    tmp.write_text("File content: The answer is 42.")
+    try:
+        result = run_cli(
+            ["-q", "-o", "json", "-f", str(tmp), "--stream",
+             "What number is mentioned? Reply with just the number."],
+            input_text="Stdin content: ignore this.",
+            timeout=90,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        payload = json.loads(result.stdout)
+        assert "42" in payload["content"]
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def test_stdin_stream_with_system_prompt():
+    """Piped stdin + --stream + system prompt should all combine (GH-82)."""
+    require_model()
+    result = run_cli(
+        ["-q", "-o", "json", "--stream",
+         "-s", "You are a helpful assistant. Always reply in uppercase.",
+         "What city is mentioned?"],
+        input_text="The capital of France is Paris.",
+        timeout=90,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    payload = json.loads(result.stdout)
+    assert "paris" in payload["content"].lower() or "PARIS" in payload["content"]
+
+
 # --- Self-update tests (--update) ---
 
 

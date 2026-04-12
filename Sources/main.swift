@@ -108,8 +108,8 @@ if parsed.debug { apfelDebugEnabled = true }
 var prompt = parsed.prompt
 var fileContents = parsed.fileContents
 
-// Read stdin when piped -- as the prompt (no args) or prepended to the prompt.
-if parsed.mode == .single && isatty(STDIN_FILENO) == 0 {
+// Read stdin when piped (single/stream) -- as the prompt (no args) or prepended to the prompt.
+if parsed.mode.acceptsStdinInput && isatty(STDIN_FILENO) == 0 {
     var lines: [String] = []
     while let line = readLine(strippingNewline: false) {
         lines.append(line)

@@ -25,6 +25,16 @@ public struct CLIArguments: Sendable, Equatable {
         case help
         case version
         case release
+
+        /// Whether this mode supports reading piped stdin as prompt input.
+        /// Modes that accept a user prompt from the command line also accept
+        /// it (or a prefix to it) from stdin.
+        public var acceptsStdinInput: Bool {
+            switch self {
+            case .single, .stream: return true
+            default: return false
+            }
+        }
     }
 
     public var mode: Mode = .single
